@@ -16,7 +16,7 @@ st.title("LoRA Image Captioner")
 with st.sidebar:
     st.header("Settings")
     api_key = st.text_input("OpenAI API Key", type="password")
-    trigger_word = st.text_input("Trigger Word", placeholder="e.g., JenniePink")
+    trigger_word = st.text_input("Trigger Word", placeholder="e.g., JenniePink, RedCar, AnimeStyle")
     
     st.markdown("""
     ### Instructions
@@ -35,23 +35,76 @@ def generate_caption(image_bytes, api_key, trigger_word):
     encoded_image = base64.b64encode(image_bytes).decode('utf-8')
     
     prompt = """
-    Analyze this image and create a caption for LoRA training following this exact structure:
-    1. Start with demographic details (age, ethnicity if visible)
-    2. Describe hair color and length
-    3. Always include "front-facing"
-    4. Detail the outfit and any accessories
-    5. Describe the environment/background
-    6. End with mood or theme
+    Create an extremely detailed caption for LoRA training, analyzing every aspect of the image. Follow this structure:
+
+    1. Main Subject Identification:
+       - Type (person, object, style, character, etc.)
+       - Primary distinguishing features
+       - Position and orientation in frame
+    
+    2. Visual Details (Based on subject type):
+    
+    For People/Characters:
+       - Hair: color, length, style, texture, parting, movement
+       - Face: expression, features, makeup, angles
+       - Pose: body position, gesture, interaction with camera
+       - Clothing: style, fit, materials, colors, patterns
+       - Accessories: jewelry, props, additional elements
+    
+    For Objects/Products:
+       - Shape and form
+       - Materials and textures
+       - Colors and patterns
+       - Design elements
+       - Functional features
+       - Scale and proportion
+    
+    For Styles/Artistic Elements:
+       - Artistic techniques
+       - Color schemes
+       - Patterns and motifs
+       - Stylistic influences
+       - Unique characteristics
+    
+    3. Environmental Elements:
+       - Background description
+       - Setting context
+       - Lighting conditions and effects
+       - Shadows and highlights
+       - Depth and perspective
+    
+    4. Technical Aspects:
+       - Camera angle
+       - Shot type (close-up, full body, etc.)
+       - Composition elements
+       - Focus points
+       - Image quality characteristics
+    
+    5. Mood and Atmosphere:
+       - Overall feeling
+       - Emotional tone
+       - Stylistic mood
+       - Environmental atmosphere
     
     Rules:
-    - Be concise but detailed
     - Use commas to separate elements
-    - Avoid subjective terms like "beautiful" or "amazing"
-    - Focus on clear visual traits
-    - Keep descriptions professional and neutral
+    - Be extremely detailed and specific
+    - Focus on objective, visual characteristics
+    - Include all relevant technical details
+    - Describe lighting and atmospheric effects
+    - Be precise with color descriptions
+    - Don't use quotation marks
+    - Avoid subjective terms (beautiful, pretty, etc.)
+    - Use technical and descriptive language
+    - Maintain consistent detail level throughout
     
-    Example format:
-    "young asian woman, long black hair, front-facing, wearing a white blouse with lace details, standing in a sunlit garden with blooming flowers, serene and peaceful"
+    Example formats:
+
+    Person: long black hair sleek and straight center-parted, front-facing pose with deliberate hand placement, structured black garment with architectural details, precise lighting highlighting facial contours, studio setting with gradient background, professional editorial atmosphere
+
+    Object: metallic red sports car, aggressive front-facing stance, carbon fiber hood with prominent air intakes, low-profile design with aerodynamic elements, showroom lighting creating reflective highlights, modern industrial setting, dynamic and powerful presence
+
+    Style: vibrant anime-inspired artwork, bold cel-shading technique, exaggerated facial features with large expressive eyes, dynamic action pose with motion lines, saturated color palette with strong contrasts, detailed background with speed effects, energetic and dramatic mood
     """
 
     headers = {
@@ -75,7 +128,7 @@ def generate_caption(image_bytes, api_key, trigger_word):
                 ]
             }
         ],
-        "max_tokens": 500
+        "max_tokens": 1000
     }
 
     response = requests.post(
@@ -86,6 +139,8 @@ def generate_caption(image_bytes, api_key, trigger_word):
 
     if response.status_code == 200:
         caption = response.json()['choices'][0]['message']['content'].strip()
+        # Remove any quotation marks from the caption
+        caption = caption.replace('"', '').replace('"', '')
         return f"{trigger_word}, {caption}"
     else:
         raise Exception(f"Error: {response.status_code}, {response.text}")
