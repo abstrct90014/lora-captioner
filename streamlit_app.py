@@ -12,40 +12,38 @@ st.set_page_config(page_title="LoRA Image Captioner", layout="wide")
 
 st.title("LoRA Image Captioner")
 
-# Sidebar for API key
+# Sidebar for API key and settings
 with st.sidebar:
     st.header("Settings")
     api_key = st.text_input("OpenAI API Key", type="password")
     trigger_word = st.text_input("Trigger Word", placeholder="e.g., JenniePink")
     
+    training_type = st.selectbox(
+        "Training Type",
+        ["Character", "Style", "Concept"],
+        help="""
+        Character: Specific person or character (real or animated)
+        Style: Art style, time period, or aesthetic
+        Concept: Products, objects, clothing, poses, etc.
+        """
+    )
+    
     st.markdown("""
     ### Instructions
     1. Enter your OpenAI API key
     2. Set your trigger word
-    3. Upload your images
-    4. Wait for processing
-    5. Download your captioned dataset
+    3. Select training type
+    4. Upload your images
+    5. Wait for processing
+    6. Download your captioned dataset
     
     ### Note
     - Processing takes 2-3 seconds per image
     - Cost is approximately $0.01-0.02 per image
     """)
 
-def generate_caption(image_bytes, api_key, trigger_word):
-    encoded_image = base64.b64encode(image_bytes).decode('utf-8')
-    
-    prompt = """
-    Create a detailed, single-line caption for LoRA training. Include all details in a continuous, comma-separated format.
-    
-    Required elements in order:
-    1. Hair details (color, length, style, texture, parting)
-    2. Facial position (always mention if front-facing)
-    3. Pose and body positioning
-    4. Clothing and accessories description
-    5. Facial features and expression
-    6. Background and lighting
-    7. Overall mood and atmosphere
-
+def get_prompt_by_type(training_type):
+    base_rules = """
     Rules:
     - Create ONE continuous line with elements separated by commas
     - Don't use bullet points or numbered lists
@@ -54,10 +52,69 @@ def generate_caption(image_bytes, api_key, trigger_word):
     - Focus on visual and technical aspects
     - Use precise, descriptive language
     - No subjective terms like beautiful/pretty
-
-    Example format:
-    long black hair sleek and straight parted in the middle, front-facing pose with arms elegantly crossed in front, minimalistic black strapless outfit, adorned with delicate gold jewelry including thin bracelets multiple rings and ear cuffs, neutral facial expression with soft lips, clean white background with soft lighting that highlights the skin's natural glow, sophisticated and refined atmosphere, minimalist and chic styling, calm and poised mood, focus on elegance and understated luxury
     """
+    
+    if training_type == "Character":
+        return f"""
+        Create a detailed, single-line caption focusing on the character's unique traits and appearance.
+        
+        Required elements in order:
+        1. Character identity and demographic details
+        2. Hair details (color, length, style, texture, parting)
+        3. Facial features and expression
+        4. Pose and body positioning
+        5. Clothing and accessories specific to the character
+        6. Environmental context and lighting
+        7. Character's mood and presence
+        
+        {base_rules}
+        
+        Example format:
+        young asian woman with distinctive features, long black hair sleek and straight parted in the middle, sharp facial features with defined cheekbones, front-facing pose with arms elegantly crossed in front, minimalistic black strapless outfit, adorned with signature gold jewelry, clean white background with professional lighting, poised and confident presence
+        """
+    
+    elif training_type == "Style":
+        return f"""
+        Create a detailed, single-line caption focusing on the distinctive elements of the style.
+        
+        Required elements in order:
+        1. Style category and era/origin
+        2. Key stylistic elements and techniques
+        3. Color palette and patterns
+        4. Composition and arrangement
+        5. Texture and material qualities
+        6. Lighting and atmospheric elements
+        7. Overall mood and aesthetic impact
+        
+        {base_rules}
+        
+        Example format:
+        minimalist contemporary style, clean geometric lines with architectural influence, monochromatic palette dominated by stark blacks and whites, balanced asymmetrical composition, smooth matte surfaces contrasting with metallic accents, diffused studio lighting creating subtle shadows, sophisticated and refined aesthetic
+        """
+    
+    else:  # Concept
+        return f"""
+        Create a detailed, single-line caption focusing on the primary concept/object.
+        
+        Required elements in order:
+        1. Product/object identification and key features
+        2. Materials, textures, and construction details
+        3. Color and pattern specifics
+        4. Positioning and presentation
+        5. Supporting elements (model, props, etc.)
+        6. Environmental context and lighting
+        7. Overall presentation style
+        
+        {base_rules}
+        
+        Example format:
+        classic white polo shirt with signature crocodile emblem, premium cotton pique fabric with ribbed collar and cuffs, pristine white colorway with tonal stitching, displayed on athletic male model front-facing stance, styled with dark jeans and minimal accessories, studio setting with soft directional lighting, clean and premium product presentation
+        """
+
+def generate_caption(image_bytes, api_key, trigger_word, training_type):
+    encoded_image = base64.b64encode(image_bytes).decode('utf-8')
+    
+    prompt = get_prompt_by_type(training_type)
 
     headers = {
         "Content-Type": "application/json",
@@ -132,7 +189,7 @@ if uploaded_files and api_key and trigger_word:
                     image_bytes = uploaded_file.read()
                     
                     # Generate caption
-                    caption = generate_caption(image_bytes, api_key, trigger_word)
+                    caption = generate_caption(image_bytes, api_key, trigger_word, training_type)
                     
                     # Save files
                     base_name = f"{idx:04d}"
