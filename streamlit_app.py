@@ -12,30 +12,22 @@ from datetime import datetime
 # Page config
 st.set_page_config(page_title="LoRA Image Captioner", layout="wide")
 
-# Initialize session state for file tracking
+# Initialize session state
 if 'processed_files' not in st.session_state:
-    st.session_state.processed_files = {}
-if 'file_queue' not in st.session_state:
-    st.session_state.file_queue = []
+    st.session_state.processed_files = set()  # Just store processed file hashes
+if 'current_batch' not in st.session_state:
+    st.session_state.current_batch = []  # Store current batch of files to process
 if 'current_page' not in st.session_state:
     st.session_state.current_page = 1
+if 'processing_status' not in st.session_state:
+    st.session_state.processing_status = {}  # Store processing status and progress
 
-# Functions for file status management
-def get_file_status(file_hash):
-    return st.session_state.processed_files.get(file_hash, {'status': 'queued', 'progress': 0})
-
-def update_file_status(file_hash, status, progress=0):
-    if file_hash not in st.session_state.processed_files:
-        st.session_state.processed_files[file_hash] = {
-            'status': status,
-            'progress': progress,
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-    else:
-        st.session_state.processed_files[file_hash].update({
-            'status': status,
-            'progress': progress
-        })
+def clear_session():
+    """Clear all session state"""
+    st.session_state.processed_files = set()
+    st.session_state.current_batch = []
+    st.session_state.current_page = 1
+    st.session_state.processing_status = {}
 
 def get_prompt_by_type(training_type):
     base_rules = """
@@ -171,6 +163,10 @@ with st.sidebar:
         """
     )
     
+    if st.button("Clear All"):
+        clear_session()
+        st.experimental_rerun()
+    
     st.markdown("""
     ### Instructions
     1. Enter your OpenAI API key
@@ -198,23 +194,24 @@ with col1:
     )
 
     if new_files:
-        # Add new files to queue
+        # Add only new files to current batch
+        st.session_state.current_batch = []
         for file in new_files:
             file_hash = hash(file.name + str(file.size))
             if file_hash not in st.session_state.processed_files:
-                st.session_state.file_queue.append({
+                st.session_state.current_batch.append({
                     'file': file,
                     'hash': file_hash
                 })
 
-    # Display file queue with pagination
-    if st.session_state.file_queue or st.session_state.processed_files:
-        st.subheader("Files Status")
+    # Display file status
+    if st.session_state.current_batch or st.session_state.processing_status:
+        st.subheader("Current Batch Status")
         
-        # Pagination controls
+        # Pagination
         items_per_page = 15
-        total_files = len(st.session_state.file_queue) + len(st.session_state.processed_files)
-        total_pages = (total_files - 1) // items_per_page + 1
+        total_files = len(st.session_state.current_batch)
+        total_pages = max(1, (total_files - 1) // items_per_page + 1)
         
         col1, col2, col3 = st.columns([1, 3, 1])
         with col1:
@@ -226,38 +223,17 @@ with col1:
             if st.button("Next →") and st.session_state.current_page < total_pages:
                 st.session_state.current_page += 1
 
-        # Display files with status
+        # Display current batch files
         start_idx = (st.session_state.current_page - 1) * items_per_page
         end_idx = start_idx + items_per_page
         
-        # Create list of all files
-        all_files = []
-        for file_info in st.session_state.file_queue:
-            status = get_file_status(file_info['hash'])
-            all_files.append({
-                'name': file_info['file'].name,
-                'status': status['status'],
-                'progress': status['progress'],
-                'hash': file_info['hash']
-            })
-        
-        for file_hash, info in st.session_state.processed_files.items():
-            if file_hash not in [f['hash'] for f in all_files]:
-                all_files.append({
-                    'name': f"Processed file {file_hash}",
-                    'status': info['status'],
-                    'progress': 100,
-                    'hash': file_hash,
-                    'timestamp': info.get('timestamp', '')
-                })
-
-        # Display paginated files
-        for file in all_files[start_idx:end_idx]:
+        for file_info in st.session_state.current_batch[start_idx:end_idx]:
+            status = st.session_state.processing_status.get(file_info['hash'], {'status': 'queued', 'progress': 0})
             col1, col2, col3 = st.columns([3, 6, 2])
             with col1:
-                st.text(file['name'])
+                st.text(file_info['file'].name)
             with col2:
-                st.progress(file['progress'] / 100)
+                st.progress(status['progress'] / 100)
             with col3:
                 status_color = {
                     'queued': '🟡',
@@ -265,31 +241,35 @@ with col1:
                     'completed': '🟢',
                     'error': '🔴'
                 }
-                st.write(f"{status_color.get(file['status'], '⚪')} {file['status']}")
+                st.write(f"{status_color.get(status['status'], '⚪')} {status['status']}")
 
 with col2:
-    if st.session_state.file_queue and api_key and trigger_word:
-        if st.button("Process Queued Images"):
+    if st.session_state.current_batch and api_key and trigger_word:
+        if st.button("Process Current Batch"):
             progress_text = st.empty()
             progress_bar = st.progress(0)
             
             try:
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    total_files = len(st.session_state.file_queue)
-                    processed_files = []
+                    total_files = len(st.session_state.current_batch)
                     
-                    for idx, file_info in enumerate(st.session_state.file_queue, 1):
+                    for idx, file_info in enumerate(st.session_state.current_batch, 1):
                         file = file_info['file']
                         file_hash = file_info['hash']
                         
                         try:
-                            update_file_status(file_hash, 'processing', (idx-1)/total_files * 100)
+                            # Update status
+                            st.session_state.processing_status[file_hash] = {
+                                'status': 'processing',
+                                'progress': (idx-1)/total_files * 100
+                            }
                             
+                            # Process file
                             image_bytes = file.read()
                             caption = generate_caption(image_bytes, api_key, trigger_word, training_type)
                             
+                            # Save files
                             base_name = f"{idx:04d}"
-                            
                             image_ext = os.path.splitext(file.name)[1]
                             image_path = os.path.join(temp_dir, f"{base_name}{image_ext}")
                             with open(image_path, "wb") as f:
@@ -299,46 +279,63 @@ with col2:
                             with open(txt_path, "w", encoding="utf-8") as f:
                                 f.write(caption)
                             
-                            update_file_status(file_hash, 'completed', 100)
-                            processed_files.append(file_hash)
+                            # Update status
+                            st.session_state.processing_status[file_hash] = {
+                                'status': 'completed',
+                                'progress': 100
+                            }
+                            st.session_state.processed_files.add(file_hash)
                             
                         except Exception as e:
-                            update_file_status(file_hash, 'error', 0)
+                            st.session_state.processing_status[file_hash] = {
+                                'status': 'error',
+                                'progress': 0
+                            }
                             st.error(f"Error processing {file.name}: {str(e)}")
                             continue
                         
                         progress_text.text(f"Processing image {idx}/{total_files}")
                         progress_bar.progress(idx/total_files)
                     
-                    if processed_files:
-                        zip_filename = f"{trigger_word}_lora_dataset.zip"
-                        zip_path = os.path.join(temp_dir, zip_filename)
-                        with zipfile.ZipFile(zip_path, "w") as zf:
-                            for file in os.listdir(temp_dir):
-                                if file != zip_filename:
-                                    file_path = os.path.join(temp_dir, file)
-                                    zf.write(file_path, file)
-                        
-                        with open(zip_path, "rb") as f:
-                            zip_data = f.read()
-                        
-                        st.session_state.file_queue = [
-                            f for f in st.session_state.file_queue 
-                            if f['hash'] not in processed_files
-                        ]
-                        
-                        progress_text.empty()
-                        progress_bar.empty()
-                        
-                        st.success("Processing complete! Click below to download your dataset.")
-                        st.download_button(
-                            label="Download Captioned Dataset",
-                            data=zip_data,
-                            file_name=zip_filename,
-                            mime="application/zip"
-                        )
+                    # Create zip file
+                    zip_filename = f"{trigger_word}_lora_dataset.zip"
+                    zip_path = os.path.join(temp_dir, zip_filename)
+                    with zipfile.ZipFile(zip_path, "w") as zf:
+                        for file in os.listdir(temp_dir):
+                            if file != zip_filename:
+                                file_path = os.path.join(temp_dir, file)
+                                zf.write(file_path, file)
+                    
+                    # Prepare download
+                    with open(zip_path, "rb") as f:
+                        zip_data = f.read()
+                    
+                    # Clear current batch
+                    st.session_state.current_batch = []
+                    
+                    # Clear progress indicators
+                    progress_text.empty()
+                    progress_bar.empty()
+                    
+                    # Show download button
+                    st.success("Processing complete! Click below to download your dataset.")
+                    st.download_button(
+                        label="Download Captioned Dataset",
+                        data=zip_data,
+                        file_name=zip_filename,
+                        mime="application/zip"
+                    )
             
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
                 progress_text.empty()
                 progress_bar.empty()
+
+# Error handling
+if st.button("Process Images") and not (api_key and trigger_word and st.session_state.current_batch):
+    if not api_key:
+        st.error("Please enter your OpenAI API key")
+    if not trigger_word:
+        st.error("Please enter a trigger word")
+    if not st.session_state.current_batch:
+        st.error("Please upload some images")
