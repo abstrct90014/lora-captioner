@@ -60,7 +60,7 @@ def generate_caption(image_bytes, api_key, trigger_word):
     }
 
     payload = {
-        "model": "gpt-4-vision-preview-1106",
+        "model": "gpt-4-vision-preview",
         "messages": [
             {
                 "role": "user",
