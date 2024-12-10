@@ -16,7 +16,7 @@ st.title("LoRA Image Captioner")
 with st.sidebar:
     st.header("Settings")
     api_key = st.text_input("OpenAI API Key", type="password")
-    trigger_word = st.text_input("Trigger Word", placeholder="e.g., JenniePink, RedCar, AnimeStyle")
+    trigger_word = st.text_input("Trigger Word", placeholder="e.g., JenniePink")
     
     st.markdown("""
     ### Instructions
@@ -35,76 +35,28 @@ def generate_caption(image_bytes, api_key, trigger_word):
     encoded_image = base64.b64encode(image_bytes).decode('utf-8')
     
     prompt = """
-    Create an extremely detailed caption for LoRA training, analyzing every aspect of the image. Follow this structure:
+    Create a detailed, single-line caption for LoRA training. Include all details in a continuous, comma-separated format.
+    
+    Required elements in order:
+    1. Hair details (color, length, style, texture, parting)
+    2. Facial position (always mention if front-facing)
+    3. Pose and body positioning
+    4. Clothing and accessories description
+    5. Facial features and expression
+    6. Background and lighting
+    7. Overall mood and atmosphere
 
-    1. Main Subject Identification:
-       - Type (person, object, style, character, etc.)
-       - Primary distinguishing features
-       - Position and orientation in frame
-    
-    2. Visual Details (Based on subject type):
-    
-    For People/Characters:
-       - Hair: color, length, style, texture, parting, movement
-       - Face: expression, features, makeup, angles
-       - Pose: body position, gesture, interaction with camera
-       - Clothing: style, fit, materials, colors, patterns
-       - Accessories: jewelry, props, additional elements
-    
-    For Objects/Products:
-       - Shape and form
-       - Materials and textures
-       - Colors and patterns
-       - Design elements
-       - Functional features
-       - Scale and proportion
-    
-    For Styles/Artistic Elements:
-       - Artistic techniques
-       - Color schemes
-       - Patterns and motifs
-       - Stylistic influences
-       - Unique characteristics
-    
-    3. Environmental Elements:
-       - Background description
-       - Setting context
-       - Lighting conditions and effects
-       - Shadows and highlights
-       - Depth and perspective
-    
-    4. Technical Aspects:
-       - Camera angle
-       - Shot type (close-up, full body, etc.)
-       - Composition elements
-       - Focus points
-       - Image quality characteristics
-    
-    5. Mood and Atmosphere:
-       - Overall feeling
-       - Emotional tone
-       - Stylistic mood
-       - Environmental atmosphere
-    
     Rules:
-    - Use commas to separate elements
-    - Be extremely detailed and specific
-    - Focus on objective, visual characteristics
-    - Include all relevant technical details
-    - Describe lighting and atmospheric effects
-    - Be precise with color descriptions
+    - Create ONE continuous line with elements separated by commas
+    - Don't use bullet points or numbered lists
     - Don't use quotation marks
-    - Avoid subjective terms (beautiful, pretty, etc.)
-    - Use technical and descriptive language
-    - Maintain consistent detail level throughout
-    
-    Example formats:
+    - Be extremely detailed but keep it flowing
+    - Focus on visual and technical aspects
+    - Use precise, descriptive language
+    - No subjective terms like beautiful/pretty
 
-    Person: long black hair sleek and straight center-parted, front-facing pose with deliberate hand placement, structured black garment with architectural details, precise lighting highlighting facial contours, studio setting with gradient background, professional editorial atmosphere
-
-    Object: metallic red sports car, aggressive front-facing stance, carbon fiber hood with prominent air intakes, low-profile design with aerodynamic elements, showroom lighting creating reflective highlights, modern industrial setting, dynamic and powerful presence
-
-    Style: vibrant anime-inspired artwork, bold cel-shading technique, exaggerated facial features with large expressive eyes, dynamic action pose with motion lines, saturated color palette with strong contrasts, detailed background with speed effects, energetic and dramatic mood
+    Example format:
+    long black hair sleek and straight parted in the middle, front-facing pose with arms elegantly crossed in front, minimalistic black strapless outfit, adorned with delicate gold jewelry including thin bracelets multiple rings and ear cuffs, neutral facial expression with soft lips, clean white background with soft lighting that highlights the skin's natural glow, sophisticated and refined atmosphere, minimalist and chic styling, calm and poised mood, focus on elegance and understated luxury
     """
 
     headers = {
@@ -139,8 +91,15 @@ def generate_caption(image_bytes, api_key, trigger_word):
 
     if response.status_code == 200:
         caption = response.json()['choices'][0]['message']['content'].strip()
-        # Remove any quotation marks from the caption
+        # Remove any quotation marks and ensure no numbered lists or bullet points
         caption = caption.replace('"', '').replace('"', '')
+        # Remove any numbered list formatting if present
+        caption = ' '.join([line.strip() for line in caption.split('\n')])
+        # Remove any bullet points if present
+        caption = caption.replace('- ', '')
+        # Remove any numbering if present
+        import re
+        caption = re.sub(r'^\d+\.\s*', '', caption)
         return f"{trigger_word}, {caption}"
     else:
         raise Exception(f"Error: {response.status_code}, {response.text}")
@@ -189,11 +148,12 @@ if uploaded_files and api_key and trigger_word:
                     with open(txt_path, "w", encoding="utf-8") as f:
                         f.write(caption)
                 
-                # Create zip file
-                zip_path = os.path.join(temp_dir, "lora_dataset.zip")
+                # Create zip file with trigger word in filename
+                zip_filename = f"{trigger_word}_lora_dataset.zip"
+                zip_path = os.path.join(temp_dir, zip_filename)
                 with zipfile.ZipFile(zip_path, "w") as zf:
                     for file in os.listdir(temp_dir):
-                        if file != "lora_dataset.zip":
+                        if file != zip_filename:
                             file_path = os.path.join(temp_dir, file)
                             zf.write(file_path, file)
                 
@@ -205,12 +165,12 @@ if uploaded_files and api_key and trigger_word:
                 progress_text.empty()
                 progress_bar.empty()
                 
-                # Create download button
+                # Create download button with trigger word in filename
                 st.success("Processing complete! Click below to download your dataset.")
                 st.download_button(
                     label="Download Captioned Dataset",
                     data=zip_data,
-                    file_name="lora_dataset.zip",
+                    file_name=zip_filename,
                     mime="application/zip"
                 )
                 
