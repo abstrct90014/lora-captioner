@@ -21,12 +21,18 @@ if 'current_page' not in st.session_state:
     st.session_state.current_page = 1
 if 'processing_status' not in st.session_state:
     st.session_state.processing_status = {}
+if 't5_prompt' not in st.session_state:
+    st.session_state.t5_prompt = ""
+if 'clip_prompt' not in st.session_state:
+    st.session_state.clip_prompt = ""
 
 def clear_session():
     st.session_state.processed_files = set()
     st.session_state.current_batch = []
     st.session_state.current_page = 1
     st.session_state.processing_status = {}
+    st.session_state.t5_prompt = ""
+    st.session_state.clip_prompt = ""
 
 # Function to generate T5 prompt from image or text
 def generate_t5_prompt(input_data, input_type, api_key):
@@ -168,6 +174,23 @@ def convert_to_clip(t5_prompt, api_key):
     else:
         raise Exception(f"Error: {response.status_code}, {response.text}")
 
+# Function to display prompts
+def display_prompts():
+    if st.session_state.t5_prompt or st.session_state.clip_prompt:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("T5 Prompt (512 tokens)")
+            st.text_area("", st.session_state.t5_prompt, height=200, key="t5_display")
+            if st.button("Copy T5 Prompt", key="copy_t5"):
+                st.write("T5 prompt copied! 📋")
+        
+        with col2:
+            st.subheader("CLIP Prompt (70 tokens)")
+            st.text_area("", st.session_state.clip_prompt, height=100, key="clip_display")
+            if st.button("Copy CLIP Prompt", key="copy_clip"):
+                st.write("CLIP prompt copied! 📋")
+
 # [Previous LoRA captioning functions remain the same]
 # Include all the functions from the previous version here
 
@@ -199,22 +222,16 @@ else:  # Prompt Optimization mode
             with st.spinner("Generating prompts..."):
                 try:
                     # Generate T5 prompt
-                    t5_prompt = generate_t5_prompt(user_input, "text", api_key)
+                    st.session_state.t5_prompt = generate_t5_prompt(user_input, "text", api_key)
                     
                     # Convert to CLIP prompt
-                    clip_prompt = convert_to_clip(t5_prompt, api_key)
-                    
-                    # Display results
-                    st.subheader("T5 Prompt (512 tokens)")
-                    st.text_area("", t5_prompt, height=200)
-                    st.button("Copy T5 Prompt", key="copy_t5")
-                    
-                    st.subheader("CLIP Prompt (70 tokens)")
-                    st.text_area("", clip_prompt, height=100)
-                    st.button("Copy CLIP Prompt", key="copy_clip")
+                    st.session_state.clip_prompt = convert_to_clip(st.session_state.t5_prompt, api_key)
                     
                 except Exception as e:
                     st.error(f"An error occurred: {str(e)}")
+        
+        # Display prompts
+        display_prompts()
     
     else:  # Image input
         uploaded_image = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg', 'webp'])
@@ -228,22 +245,16 @@ else:  # Prompt Optimization mode
                     try:
                         # Generate T5 prompt from image
                         image_bytes = uploaded_image.read()
-                        t5_prompt = generate_t5_prompt(image_bytes, "image", api_key)
+                        st.session_state.t5_prompt = generate_t5_prompt(image_bytes, "image", api_key)
                         
                         # Convert to CLIP prompt
-                        clip_prompt = convert_to_clip(t5_prompt, api_key)
-                        
-                        # Display results
-                        st.subheader("T5 Prompt (512 tokens)")
-                        st.text_area("", t5_prompt, height=200)
-                        st.button("Copy T5 Prompt", key="copy_t5")
-                        
-                        st.subheader("CLIP Prompt (70 tokens)")
-                        st.text_area("", clip_prompt, height=100)
-                        st.button("Copy CLIP Prompt", key="copy_clip")
+                        st.session_state.clip_prompt = convert_to_clip(st.session_state.t5_prompt, api_key)
                         
                     except Exception as e:
                         st.error(f"An error occurred: {str(e)}")
+            
+            # Display prompts
+            display_prompts()
 
     st.sidebar.markdown("""
     ### Instructions
